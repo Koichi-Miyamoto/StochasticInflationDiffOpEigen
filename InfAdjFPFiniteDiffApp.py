@@ -9,7 +9,6 @@ def InfAdjFPFiniteDiff(
         nGridVec,
         upperBoundVec,
         lowerBoundVec,
-        gridWidthVec,
         upperBoundCondVec,
         lowerBoundCondVec,
         hermitianize=False):
@@ -18,6 +17,7 @@ def InfAdjFPFiniteDiff(
     nGridTot = np.prod(nGridVec)
 
     gridsEachDim = []
+    gridWidthVec = []
     for i in range(dim):
         ubCond = upperBoundCondVec[i]
         lbCond = lowerBoundCondVec[i]
@@ -25,11 +25,12 @@ def InfAdjFPFiniteDiff(
         inclLb = lbCond == "Neumann0"
         nGridTemp = nGridVec[i] + (not inclLb)
         gridsEachDim.append(np.linspace(lowerBoundVec[i], upperBoundVec[i], nGridTemp, endpoint=inclUb)[int(not inclLb):])
+        gridWidthVec.append((upperBoundVec[i] - lowerBoundVec[i]) / (nGridVec[i] + (not inclLb) + (not inclLb)))
         
     grids = [np.array(g) for g in itertools.product(*gridsEachDim)]
     vAtGrids = np.array([infPotentialFunc(g) for g in grids]) / (24 * np.pi * np.pi)
 
-    ret = np.zeros(nGridTot)
+    mat2ndDeriv = np.zeros((nGridTot, nGridTot))
     for i in range(dim):
         mat2ndDerivith = 1
         
@@ -44,7 +45,7 @@ def InfAdjFPFiniteDiff(
 
     ret = np.diag(vAtGrids) @ mat2ndDeriv
 
-    mat1stDeriv = np.zeros(nGridTot)
+    mat1stDeriv = np.zeros((nGridTot, nGridTot))
     for i in range(dim):
         mat1stDerivith = 1
         
