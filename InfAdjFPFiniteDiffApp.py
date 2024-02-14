@@ -23,9 +23,9 @@ def InfAdjFPFiniteDiff(
         lbCond = lowerBoundCondVec[i]
         inclUb = ubCond == "Neumann0"
         inclLb = lbCond == "Neumann0"
-        nGridTemp = nGridVec[i] + (not inclLb)
-        gridsEachDim.append(np.linspace(lowerBoundVec[i], upperBoundVec[i], nGridTemp, endpoint=inclUb)[int(not inclLb):])
-        gridWidthVec.append((upperBoundVec[i] - lowerBoundVec[i]) / (nGridVec[i] + (not inclLb) + (not inclLb)))
+        nGridTemp = nGridVec[i] + (not inclLb) + (not inclUb)
+        gridsEachDim.append(np.linspace(lowerBoundVec[i], upperBoundVec[i], nGridTemp, endpoint=True)[int(not inclLb):(nGridTemp - int(not inclUb))])
+        gridWidthVec.append((upperBoundVec[i] - lowerBoundVec[i]) / (nGridTemp - 1))
         
     grids = [np.array(g) for g in itertools.product(*gridsEachDim)]
     vAtGrids = np.array([infPotentialFunc(g) for g in grids]) / (24 * np.pi * np.pi)
@@ -67,3 +67,53 @@ def InfAdjFPFiniteDiff(
         ret = wSqrt @ ret @ (1 / wSqrt)
     
     return ret
+
+def InfAdjFPFiniteDiff_Larsson(
+        dim,
+        infPotentialFunc,
+        infPotentialDerivFuncs,
+        infPotentialDeriv2Funcs,
+        nGrid,
+        upperBound,
+        lowerBound):
+    
+    # support Dirichlet only
+    # assume that all upper bounds are equal and all lower bounds are equal
+
+    nGridTot = nGrid ** dim
+    gridWidth = (upperBound - lowerBound) / (nGrid + 1)
+
+    gridsEachDim = []
+    idVecLikeTemp = []
+    unitVecs = []
+    for i in range(dim):
+        gridsEachDim.append(np.linspace(lowerBound, upperBound, nGrid + 2, endpoint=True)[1:-1])
+        idVecLikeTemp.append(np.arange(nGrid))
+        unitVecs.append(np.eye(dim)[i])
+        
+    grids = [np.array(g) for g in itertools.product(*gridsEachDim)]
+    idVecLikes = [np.array(i) for i in itertools.product(*idVecLikeTemp)]
+
+    ret = np.zeros((nGridTot, nGridTot))
+    for idVecLike in idVecLikes:
+        i = ConvIdVecLikeToId(idVecLike, dim, nGrid)
+        grid = grids[i]
+        v = infPotentialFunc(grid) / (24 * np.pi * np.pi)
+        nonDerivTerm = 0
+        coefDiag = 0
+        for iDim in range(dim):
+            ei = unitVecs[iDim]
+            vPlus = infPotentialFunc(grid + 0.5 * gridWidth * ei) / (24 * np.pi * np.pi)
+            vMinus = infPotentialFunc(grid - 0.5 * gridWidth * ei) / (24 * np.pi * np.pi)
+            if idVecLike[iDim] < nGrid - 1: ret[i, i + nGrid ** (dim - 1 - iDim)] = -vPlus / gridWidth ** 2
+            if idVecLike[iDim] > 0: ret[i, i - nGrid ** (dim - 1 - iDim)] = -vMinus / gridWidth ** 2
+            coefDiag += vPlus + vMinus
+            vDer = infPotentialDerivFuncs[iDim](grid) / (24 * np.pi * np.pi)
+            vDer2 = infPotentialDeriv2Funcs[iDim](grid) / (24 * np.pi * np.pi)
+            nonDerivTerm += (2 * v * v * (1 + v) * vDer2 - (1 + 4 * v + v * v) * vDer * vDer) / (4 * v * v * v)
+        ret[i, i] = coefDiag / gridWidth ** 2 + nonDerivTerm
+    
+    return ret
+
+def ConvIdVecLikeToId(idVecLike, dim, nGrid):
+    return np.dot(idVecLike, nGrid ** np.arange(dim - 1, -1, -1))
