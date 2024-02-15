@@ -110,7 +110,7 @@ def InfAdjFPFiniteDiff_Larsson(
             coefDiag += vPlus + vMinus
             vDer = infPotentialDerivFuncs[iDim](grid) / (24 * np.pi * np.pi)
             vDer2 = infPotentialDeriv2Funcs[iDim](grid) / (24 * np.pi * np.pi)
-            nonDerivTerm += (2 * v * v * (1 + v) * vDer2 - (1 + 4 * v + v * v) * vDer * vDer) / (4 * v * v * v)
+            nonDerivTerm -= (2 * v * v * (1 + v) * vDer2 - (1 + 4 * v + v * v) * vDer * vDer) / (4 * v * v * v)
         ret[i, i] = coefDiag / gridWidth ** 2 + nonDerivTerm
     
     return ret
