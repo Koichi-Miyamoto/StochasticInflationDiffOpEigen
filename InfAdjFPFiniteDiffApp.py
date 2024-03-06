@@ -128,6 +128,8 @@ def InfAdjFPFiniteDiff_Larsson(
                 coefDiag += vPlus + vMinus
                 nonDerivTerm -= (2 * v * v * (1 + v) * vDer2s[iDim, iDim] - (1 + 4 * v + v * v) * vDers[iDim] * vDers[iDim]) / (4 * v * v * v)
             ret[i, i] = coefDiag / gridWidth ** 2 + nonDerivTerm
+        else:
+            ret[:i, i] = 0
     
     return ret
 
