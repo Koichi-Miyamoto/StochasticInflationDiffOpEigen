@@ -94,24 +94,40 @@ def InfAdjFPFiniteDiff_Larsson(
     grids = [np.array(g) for g in itertools.product(*gridsEachDim)]
     idVecLikes = [np.array(i) for i in itertools.product(*idVecLikeTemp)]
 
+    # If 2nd deriv funcs are given as a 1D array, convert them to a diagonal matrix
+    infPotentialDeriv2FuncMat = np.array(infPotentialDeriv2Funcs)
+    if infPotentialDeriv2FuncMat.ndim == 1:
+        infPotentialDeriv2FuncMat = np.full((dim, dim), lambda x: 0)
+        for i in range(dim): infPotentialDeriv2FuncMat[i, i] = infPotentialDeriv2Funcs[i]
+
     ret = np.zeros((nGridTot, nGridTot))
     for idVecLike in idVecLikes:
         i = ConvIdVecLikeToId(idVecLike, dim, nGrid)
         grid = grids[i]
         v = infPotentialFunc(grid) / (24 * np.pi * np.pi)
-        nonDerivTerm = 0
-        coefDiag = 0
-        for iDim in range(dim):
-            ei = unitVecs[iDim]
-            vPlus = infPotentialFunc(grid + 0.5 * gridWidth * ei) / (24 * np.pi * np.pi)
-            vMinus = infPotentialFunc(grid - 0.5 * gridWidth * ei) / (24 * np.pi * np.pi)
-            if idVecLike[iDim] < nGrid - 1: ret[i, i + nGrid ** (dim - 1 - iDim)] = -vPlus / gridWidth ** 2
-            if idVecLike[iDim] > 0: ret[i, i - nGrid ** (dim - 1 - iDim)] = -vMinus / gridWidth ** 2
-            coefDiag += vPlus + vMinus
-            vDer = infPotentialDerivFuncs[iDim](grid) / (24 * np.pi * np.pi)
-            vDer2 = infPotentialDeriv2Funcs[iDim](grid) / (24 * np.pi * np.pi)
-            nonDerivTerm -= (2 * v * v * (1 + v) * vDer2 - (1 + 4 * v + v * v) * vDer * vDer) / (4 * v * v * v)
-        ret[i, i] = coefDiag / gridWidth ** 2 + nonDerivTerm
+        vDers = np.array([vDerFunc(grid) / (24 * np.pi * np.pi) for vDerFunc in infPotentialDerivFuncs])
+        vDer2s = np.zeros((dim, dim))
+        for i1, i2 in np.ndindex((dim, dim)):
+            vDer2s[i1, i2] = infPotentialDeriv2FuncMat[i1, i2](grid) / (24 * np.pi * np.pi)
+
+        # slow-roll parameters
+        slowrollEps = 0.5 * np.sum((vDers / v) ** 2)
+        slowrollEta = np.abs(vDers.T @ vDer2s @ vDers / v / np.sum(vDers ** 2))
+
+        # Fill the discretizing matrix for the differential operator if and only if the slowroll conditions hold.
+        # If not, the corresponding entry is left zero.
+        if slowrollEps <= 1 and slowrollEta <= 1:
+            nonDerivTerm = 0
+            coefDiag = 0
+            for iDim in range(dim):
+                ei = unitVecs[iDim]
+                vPlus = infPotentialFunc(grid + 0.5 * gridWidth * ei) / (24 * np.pi * np.pi)
+                vMinus = infPotentialFunc(grid - 0.5 * gridWidth * ei) / (24 * np.pi * np.pi)
+                if idVecLike[iDim] < nGrid - 1: ret[i, i + nGrid ** (dim - 1 - iDim)] = -vPlus / gridWidth ** 2
+                if idVecLike[iDim] > 0: ret[i, i - nGrid ** (dim - 1 - iDim)] = ret[i - nGrid ** (dim - 1 - iDim), i]
+                coefDiag += vPlus + vMinus
+                nonDerivTerm -= (2 * v * v * (1 + v) * vDer2s[iDim, iDim] - (1 + 4 * v + v * v) * vDers[iDim] * vDers[iDim]) / (4 * v * v * v)
+            ret[i, i] = coefDiag / gridWidth ** 2 + nonDerivTerm
     
     return ret
 
