@@ -97,6 +97,8 @@ def InfAdjFPFiniteDiff(
     for i in range(dim):
         nonDerivTerm -= (2 * vAtGrids**2 * (1 + vAtGrids) * vDer2AtGrids[i, i] - \
                          (1 + 4 * vAtGrids + vAtGrids**2) * vDerAtGrids[i]**2) / (4 * vAtGrids**3)
+        
+    ret += np.diag(nonDerivTerm)
 
     # If the slowroll condition does not hold, set corresponding row and col to 0
     for ig in range(nGridTot):
