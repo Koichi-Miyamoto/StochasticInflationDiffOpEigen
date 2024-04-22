@@ -12,17 +12,19 @@ def InfAdjFPFiniteDiff(
         lowerBoundVec,
         upperBoundCondVec,
         lowerBoundCondVec,
-        hermitianize=False,
         logGrid=False,
-        customGrid=None):
+        customGrid=None,
+        set0OutOfInfRegion=True):
 
-    identityMats = [np.eye(n) for n in nGridVec]
+    identityMats = []
 
     gridsEachDim = []
     gridWidthVec = []
+    upperBoundCondVecMod = ["Neumann0" if cond == "Neumann0OriFunc" else cond for cond in upperBoundCondVec]
+    lowerBoundCondVecMod = ["Neumann0" if cond == "Neumann0OriFunc" else cond for cond in lowerBoundCondVec]
     for i in range(dim):
-        ubCond = upperBoundCondVec[i]
-        lbCond = lowerBoundCondVec[i]
+        ubCond = upperBoundCondVecMod[i]
+        lbCond = lowerBoundCondVecMod[i]
         inclUb = ubCond == "Neumann0"
         inclLb = lbCond == "Neumann0"
         nGridTemp = nGridVec[i] + (not inclLb) + (not inclUb)
@@ -32,6 +34,7 @@ def InfAdjFPFiniteDiff(
             gridsi = np.linspace(np.log(lowerBoundVec[i]), np.log(upperBoundVec[i]), nGridTemp, endpoint=True)[int(not inclLb):(nGridTemp - int(not inclUb))]
         else:
             gridsi = np.linspace(lowerBoundVec[i], upperBoundVec[i], nGridTemp, endpoint=True)[int(not inclLb):(nGridTemp - int(not inclUb))]
+        identityMats += [np.eye(len(gridsi))]
         gridsEachDim.append(gridsi)
         gridWidthVec.append(gridsi[1] - gridsi[0])
         
@@ -58,8 +61,9 @@ def InfAdjFPFiniteDiff(
     vAtGrids = np.array([infPotentialFuncMod(g) for g in grids]) / (24 * np.pi * np.pi)
     vDerAtGrids = np.array([np.array([vDerFunc(g) for g in grids]) / (24 * np.pi * np.pi) for vDerFunc in infPotentialDerivFuncsMod])
     vDer2AtGrids = np.zeros((dim, dim, nGridTot))
-    for i1, i2 in np.ndindex((dim, dim)):
-        vDer2AtGrids[i1, i2, :] = [infPotentialDeriv2FuncMatMod[i1, i2](g) / (24 * np.pi * np.pi) for g in grids]
+    for i in range(dim):
+        for j in range(dim):
+            vDer2AtGrids[i,j] = np.array([infPotentialDeriv2FuncMatMod[i,j](g) for g in grids]) / (24 * np.pi * np.pi)
 
     mat2ndDeriv = np.zeros((nGridTot, nGridTot))
     for i in range(dim):
@@ -68,15 +72,32 @@ def InfAdjFPFiniteDiff(
         for j in range(dim):            
             if j == i:
                 if customGrid is not None:
-                    matTemp = Deriv2nd1dimFiniteDiff_CustomGrid(customGrid[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+                    matTemp = Deriv2nd1dimFiniteDiff_CustomGrid(customGrid[i], upperBoundCondVecMod[i], lowerBoundCondVecMod[i])
                 else:
-                    matTemp = Deriv2nd1dimFiniteDiff(nGridVec[i], gridWidthVec[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+                    matTemp = Deriv2nd1dimFiniteDiff(nGridVec[i], gridWidthVec[i], upperBoundCondVecMod[i], lowerBoundCondVecMod[i])
                     if logGrid: matTemp = np.diag(1 / np.exp(gridsEachDim[i]) ** 2) @ matTemp
             else:
-                matTemp = identityMats[j]
+                matTemp = identityMats[j]          
+
             mat2ndDerivith = np.kron(mat2ndDerivith, matTemp)
         
         mat2ndDeriv += mat2ndDerivith
+
+        if upperBoundCondVec[i] == "Neumann0OriFunc" or lowerBoundCondVec[i] == "Neumann0OriFunc":
+            mat2ndDerivithAdditional = 1
+
+            for j in range(dim):
+                if j == i:
+                    matTemp = np.zeros((nGridVec[i], nGridVec[i]))
+                    if upperBoundCondVec[i] == "Neumann0OriFunc": matTemp[-1,-1] = 1 / (gridsEachDim[i][-1] - gridsEachDim[i][-2])
+                    if lowerBoundCondVec[i] == "Neumann0OriFunc": matTemp[0,0] = 1 / (gridsEachDim[i][1] - gridsEachDim[i][0])
+                else:
+                    matTemp = identityMats[j]
+
+                mat2ndDerivithAdditional = np.kron(mat2ndDerivithAdditional, matTemp)
+            
+            mat2ndDerivithAdditional = -np.diag((1 + 1 / vAtGrids) * vDerAtGrids[i] / vAtGrids) @ mat2ndDerivithAdditional
+            mat2ndDeriv += mat2ndDerivithAdditional
 
     ret = -np.diag(vAtGrids) @ mat2ndDeriv
 
@@ -87,12 +108,28 @@ def InfAdjFPFiniteDiff(
         for j in range(dim):            
             if j == i:
                 if customGrid is not None:
-                    matTemp = Deriv1st1dimFiniteDiff_CustomGrid(customGrid[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+                    matTemp = Deriv1st1dimFiniteDiff_CustomGrid(customGrid[i], upperBoundCondVecMod[i], lowerBoundCondVecMod[i])
                 else:
-                    matTemp = Deriv1st1dimFiniteDiff(nGridVec[i], gridWidthVec[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+                    matTemp = Deriv1st1dimFiniteDiff(nGridVec[i], gridWidthVec[i], upperBoundCondVecMod[i], lowerBoundCondVecMod[i])
             else:
                 matTemp = identityMats[j]
             mat1stDerivith = np.kron(mat1stDerivith, matTemp)
+
+        if upperBoundCondVec[i] == "Neumann0OriFunc" or lowerBoundCondVec[i] == "Neumann0OriFunc":
+            mat1stDerivithAdditional = 1
+
+            for j in range(dim):
+                if j == i:
+                    matTemp = np.zeros((nGridVec[i], nGridVec[i]))
+                    if upperBoundCondVec[i] == "Neumann0OriFunc": matTemp[-1,-1] = 1
+                    if lowerBoundCondVec[i] == "Neumann0OriFunc": matTemp[0,0] = 1
+                else:
+                    matTemp = identityMats[j]
+
+                mat1stDerivithAdditional = np.kron(mat1stDerivithAdditional, matTemp)
+            
+            mat1stDerivithAdditional = -np.diag(0.5 * (1 + 1 / vAtGrids) * vDerAtGrids[i] / vAtGrids) @ mat1stDerivithAdditional
+            mat1stDerivith += mat1stDerivithAdditional
         
         if logGrid:
             preFancVals = -vDerAtGrids[i] / [np.exp(g[i]) for g in grids] + vAtGrids[i] / [np.exp(g[i]) ** 2 for g in grids]
@@ -106,23 +143,20 @@ def InfAdjFPFiniteDiff(
     for i in range(dim):
         nonDerivTerm -= (2 * vAtGrids**2 * (1 + vAtGrids) * vDer2AtGrids[i, i] - \
                          (1 + 4 * vAtGrids + vAtGrids**2) * vDerAtGrids[i]**2) / (4 * vAtGrids**3)
-        
+
     ret += np.diag(nonDerivTerm)
 
     # If the slowroll condition does not hold, set corresponding row and col to 0
-    for ig in range(nGridTot):
-        vDers = vDerAtGrids[:,ig]
-        slowrollEps = 0.5 * np.sum((vDers / vAtGrids[ig]) ** 2)
-        slowrollEta = np.abs(vDers.T @ vDer2AtGrids[:,:,ig] @ vDers / vAtGrids[ig] / np.sum(vDers ** 2))
-        if slowrollEps > 1 or slowrollEta > 1:
-            ret[ig,:] = 0
-            ret[:,ig] = 0
-
-    if hermitianize:
-        if logGrid:
-            raise Exception("hermitianize is not supported when logGrid=True")
-        wSqrt = np.diag(np.exp(0.5 / preFancVals) / np.sqrt(preFancVals))
-        ret = wSqrt @ ret @ (1 / wSqrt)
+    if set0OutOfInfRegion:
+        for i1, i2 in np.ndindex((dim, dim)):
+            vDer2AtGrids[i1, i2, :] = [infPotentialDeriv2FuncMatMod[i1, i2](g) / (24 * np.pi * np.pi) for g in grids]
+        for ig in range(nGridTot):
+            vDers = vDerAtGrids[:,ig]
+            slowrollEps = 0.5 * np.sum((vDers / vAtGrids[ig]) ** 2)
+            slowrollEta = np.abs(vDers.T @ vDer2AtGrids[:,:,ig] @ vDers / vAtGrids[ig] / np.sum(vDers ** 2))
+            if slowrollEps > 1 or slowrollEta > 1:
+                ret[ig,:] = 0
+                ret[:,ig] = 0
     
     return ret
 
@@ -204,6 +238,80 @@ def InfAdjFPFiniteDiff_Larsson(
             ret[i, i] = coefDiag / gridWidth ** 2 + nonDerivTerm
         else:
             ret[:i, i] = 0
+    
+    return ret
+
+def InfAdjFPFiniteDiff_OriginalOperator(
+        dim,
+        infPotentialFunc,
+        infPotentialDerivFuncs,
+        nGridVec,
+        upperBoundVec,
+        lowerBoundVec,
+        upperBoundCondVec,
+        lowerBoundCondVec,
+        customGrid=None):
+
+    identityMats = []
+
+    gridsEachDim = []
+    gridWidthVec = []
+    for i in range(dim):
+        ubCond = upperBoundCondVec[i]
+        lbCond = lowerBoundCondVec[i]
+        inclUb = ubCond == "Neumann0"
+        inclLb = lbCond == "Neumann0"
+        nGridTemp = nGridVec[i] + (not inclLb) + (not inclUb)
+        if customGrid is not None:
+            gridsi = customGrid[i][1:-1]
+        else:
+            gridsi = np.linspace(lowerBoundVec[i], upperBoundVec[i], nGridTemp, endpoint=True)[int(not inclLb):(nGridTemp - int(not inclUb))]
+        identityMats += [np.eye(len(gridsi))]
+        gridsEachDim.append(gridsi)
+        gridWidthVec.append(gridsi[1] - gridsi[0])
+        
+    grids = [np.array(g) for g in itertools.product(*gridsEachDim)]
+    nGridTot = len(grids)
+
+    vAtGrids = np.array([infPotentialFunc(g) for g in grids]) / (24 * np.pi * np.pi)
+    vDerAtGrids = np.array([np.array([vDerFunc(g) for g in grids]) / (24 * np.pi * np.pi) for vDerFunc in infPotentialDerivFuncs])
+
+    mat2ndDeriv = np.zeros((nGridTot, nGridTot))
+    for i in range(dim):
+        mat2ndDerivith = 1
+        
+        for j in range(dim):            
+            if j == i:
+                if customGrid is not None:
+                    matTemp = Deriv2nd1dimFiniteDiff_CustomGrid(customGrid[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+                else:
+                    matTemp = Deriv2nd1dimFiniteDiff(nGridVec[i], gridWidthVec[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+            else:
+                matTemp = identityMats[j]
+            mat2ndDerivith = np.kron(mat2ndDerivith, matTemp)
+        
+        mat2ndDeriv += mat2ndDerivith
+
+    ret = -np.diag(vAtGrids) @ mat2ndDeriv
+
+    mat1stDeriv = np.zeros((nGridTot, nGridTot))
+    for i in range(dim):
+        mat1stDerivith = 1
+        
+        for j in range(dim):            
+            if j == i:
+                if customGrid is not None:
+                    matTemp = Deriv1st1dimFiniteDiff_CustomGrid(customGrid[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+                else:
+                    matTemp = Deriv1st1dimFiniteDiff(nGridVec[i], gridWidthVec[i], upperBoundCondVec[i], lowerBoundCondVec[i])
+            else:
+                matTemp = identityMats[j]
+            mat1stDerivith = np.kron(mat1stDerivith, matTemp)
+        
+        preFancVals = vDerAtGrids[i] / vAtGrids
+        mat1stDeriv += np.diag(preFancVals) @ mat1stDerivith
+
+    ret += mat1stDeriv
     
     return ret
 
