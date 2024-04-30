@@ -88,7 +88,7 @@ def InfAdjFPFiniteDiff(
 
             for j in range(dim):
                 if j == i:
-                    matTemp = np.zeros((nGridVec[i], nGridVec[i]))
+                    matTemp = np.zeros(identityMats[i].shape)
                     if upperBoundCondVec[i] == "Neumann0OriFunc": matTemp[-1,-1] = 1 / (gridsEachDim[i][-1] - gridsEachDim[i][-2])
                     if lowerBoundCondVec[i] == "Neumann0OriFunc": matTemp[0,0] = 1 / (gridsEachDim[i][1] - gridsEachDim[i][0])
                 else:
@@ -120,7 +120,7 @@ def InfAdjFPFiniteDiff(
 
             for j in range(dim):
                 if j == i:
-                    matTemp = np.zeros((nGridVec[i], nGridVec[i]))
+                    matTemp = np.zeros(identityMats[i].shape)
                     if upperBoundCondVec[i] == "Neumann0OriFunc": matTemp[-1,-1] = 1
                     if lowerBoundCondVec[i] == "Neumann0OriFunc": matTemp[0,0] = 1
                 else:
